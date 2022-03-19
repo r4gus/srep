@@ -7,3 +7,4 @@ mod core {
 }
 
 pub mod mmap;
+pub mod elf;

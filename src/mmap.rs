@@ -350,6 +350,10 @@ impl Mmap {
 
         Ok(Self(mem, len))
     }
+
+    pub fn mem(&self) -> *const c_void {
+        self.0
+    }
 }
 
 #[cfg(unix)]

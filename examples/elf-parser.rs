@@ -1,10 +1,11 @@
 use srep::mmap::*;
 use srep::mapping;
+use srep::elf::*;
 use std::fs::File;
 
 fn main() -> std::io::Result<()> {
     // Open the hello world program.
-    let file = File::open("../assets/hello")?;
+    let file = File::open("assets/hello")?;
     // Get the length of the file.
     let len = file.metadata()?.len();
     
@@ -12,6 +13,9 @@ fn main() -> std::io::Result<()> {
     let mem = Mmap::new(len, Prot::Read, mapping!(MType::Private), Some(&file), 0)
         .expect("mapping should be successful");
     // ---> The file can be closed now.
+    
+    let ehdr = Elf64_Ehdr::as_ref(&mem).expect("elf header should be present");
+    println!("Type: {}", ehdr.typ());
 
     Ok(())
 }
