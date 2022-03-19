@@ -1,22 +1,31 @@
+//! This module defines a [`Mmap`] struct and associated functions
+//! to represents a file or device mapped into the virtual address 
+//! space of the calling process.
+//!
+//! This is an abstraction of the `mmap` and `munmap` functions as
+//! described by <https://www.man7.org/linux/man-pages/man2/mmap.2.html>.
+
 use std::os::raw::{c_void, c_int, c_ulong};
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
 use std::ptr;
 use std::io;
-use super::{
+use crate::core::{
     __off_t,
-    mmap,
+    mmap, munmap,
     PROT_NONE, PROT_READ, PROT_WRITE, PROT_EXEC,
     MAP_SHARED, MAP_SHARED_VALIDATE, MAP_PRIVATE,
     MAP_32BIT, MAP_ANONYMOUS, MAP_FIXED,
     EACCES, EAGAIN, EBADF, EEXIST, EINVAL, ENFILE,
     ENODEV, ENOMEM, EOVERFLOW, EPERM, ETXTBSY,
+    size_t,
 };
 
 /// Create a mmap mapping flag consisting of a
 /// mapping type and zero or more additional flags.
 ///
 /// Syntax: `mapping!(MType, Flag*)`.
+#[macro_export]
 macro_rules! mapping {
     ($mtype:expr , $($flag:expr),*) => {
         Mapping::new($mtype)
@@ -30,7 +39,7 @@ macro_rules! mapping {
     };
 }
 
-/// Get the value of errno.
+/// Get the current errno value.
 ///
 /// This should be called immediately after a call to a platform function!
 fn errno() -> u32 {
@@ -43,10 +52,7 @@ fn errno() -> u32 {
 
 /// Wrapper for a mapping in the virtual address space
 /// of the calling process.
-///
-/// The first attribute is a pointer to the start of the
-/// mapping and the second is the length of the mapping.
-pub struct Mmap(*mut c_void, usize);
+pub struct Mmap(*mut c_void, u64);
 
 /// The desired memory protection of a mapping.
 #[repr(u32)]
@@ -115,6 +121,21 @@ pub enum Flag {
 
 /// The combination of exactly one mapping type [`MType`] and zero
 /// or more [`Flag`]s.
+///
+/// # Examples 
+///
+/// ```
+/// use srep::mmap::{MType, Flag, Mapping};
+/// use srep::mapping;
+/// 
+/// let flags = Mapping::new(MType::Private) // Create a new private memory mapping ...
+///     .with(Flag::Bit32); // ... within the first 2 Gb of the process address space.
+///
+/// // Create the same flags using the `mapping!` macro.
+/// let mflags = mapping!(MType::Private, Flag::Bit32);
+///
+/// assert_eq!(flags, mflags);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
 pub struct Mapping(c_int);
 
@@ -160,6 +181,7 @@ impl PartialEq<u32> for Mapping {
     }
 }
 
+/// Errors that can occure as a result of [`Mmap::new`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapError {
     /// A file descriptor refers to a non-regular file.
@@ -266,7 +288,7 @@ impl Mmap {
     /// This function returns a error if the specified len is 0 or
     /// if the mapping failed (see [`MapError`]).
     pub fn new(
-        len: usize, 
+        len: u64, 
         prot: Prot, 
         flags: Mapping, 
         file: Option<&File>, 
@@ -275,6 +297,13 @@ impl Mmap {
         let fd;
         let mut fl = flags;
 
+        if len == 0 {
+            // The length must be greater than 0.
+            return Err(MapError::Invalid);
+        }
+        
+        // Create an anonymous mapping if file is None or if the
+        // Anonymous flag is set.
         if matches!(file, Some(_)) && !flags.has_flag(Flag::Anonymous) {
             fd = file.unwrap().as_raw_fd();
         } else {
@@ -320,6 +349,21 @@ impl Mmap {
         }
 
         Ok(Self(mem, len))
+    }
+}
+
+#[cfg(unix)]
+impl Drop for Mmap {
+    /// Delete the mapping from the given address range.
+    ///
+    /// # Panics
+    ///
+    /// The function may panic due to invalid arguments (probably
+    /// EINVAL) but this is very unlikely.
+    fn drop(&mut self) {
+        unsafe {
+            munmap(self.0, self.1 as size_t);
+        }
     }
 }
 
