@@ -1,3 +1,6 @@
+//! This example is inspired by "Coding an ELF Parser", Learning Linux 
+//! Binary Analysis, by Ryan O'Neill.
+
 use srep::mmap::*;
 use srep::mapping;
 use srep::elf::*;
@@ -14,8 +17,12 @@ fn main() -> std::io::Result<()> {
         .expect("mapping should be successful");
     // ---> The file can be closed now.
     
-    let ehdr = Elf64_Ehdr::as_ref(&mem).expect("elf header should be present");
+    let ehdr = Elf64_Ehdr::from_ptr(&mem).expect("elf header should be present");
+    let phdr = Elf64_Phdr::from_ptr(&mem, &ehdr).expect("program header present");
+    let shdr = Elf64_Shdr::from_ptr(&mem, &ehdr).expect("section header present");
+
     println!("Type: {}", ehdr.typ());
+    println!("Program Entry point: 0x{:x}", ehdr.e_entry);
 
     Ok(())
 }

@@ -351,8 +351,16 @@ impl Mmap {
         Ok(Self(mem, len))
     }
 
-    pub fn mem(&self) -> *const c_void {
+    pub fn raw(&self) -> *const c_void {
         self.0
+    }
+
+    pub fn raw_mut(&self) -> *mut c_void {
+        self.0
+    }
+
+    pub fn len(&self) -> u64 {
+        self.1
     }
 }
 
